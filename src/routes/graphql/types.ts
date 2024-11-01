@@ -92,8 +92,8 @@ export const PostType = new GraphQLObjectType({
 // MUTATIONS
 
 const getRequiredFields = (
-  objects: GraphQLInputObjectType,
-  required: string[],
+    objects: GraphQLInputObjectType,
+    required: string[],
 ): ThunkObjMap<GraphQLInputFieldConfig> => {
   const fields = objects.getFields();
   const result = {};
