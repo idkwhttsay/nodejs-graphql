@@ -1,13 +1,24 @@
 import { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
-import { createGqlResponseSchema, gqlResponseSchema, graphqlSchema } from './schemas.js';
-import { graphql, validate, parse } from 'graphql';
-import depthLimit from 'graphql-depth-limit';
+import { graphql, validate, parse } from "graphql";
+import depthLimit from 'graphql-depth-limit'
+import { createGqlResponseSchema, gqlResponseSchema, gqlSchema } from './schemas.js';
+import userResolvers from './resolvers/userResolvers.js';
+import memberTypeResolvers from './resolvers/memberTypeResolvers.js';
+import postResolvers from './resolvers/postResolvers.js';
+import profileResolvers from './resolvers/profileResolvers.js';
+import { buildDataLoaders } from './dataLoaderBuilder.js';
 
-import Loader from './loader.js';
-import { Context } from './types/context.js';
+const rootValue = {
+    ...userResolvers,
+    ...memberTypeResolvers,
+    ...postResolvers,
+    ...profileResolvers
+};
 
 const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
     const { prisma } = fastify;
+
+    const dataLoaders = buildDataLoaders(prisma);
 
     fastify.route({
         url: '/',
@@ -18,27 +29,21 @@ const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
                 200: gqlResponseSchema,
             },
         },
-        async handler(req, rep) {
-            const { query, variables } = req.body;
+        async handler(req) {
+            const errors = validate(gqlSchema, parse(req.body.query), [depthLimit(5)]);
 
-            // depth-limit middleware
-            const validationErrors = validate(graphqlSchema, parse(query), [
-                depthLimit(5),
-            ]);
+            if (errors.length > 0) {
+                return { errors };
+            };
 
-            if (validationErrors.length) {
-                return rep.send({ errors: validationErrors });
-            }
-
-            return await graphql({
-                schema: graphqlSchema,
-                source: query,
-                contextValue: {
-                    db: prisma,
-                    loader: new Loader(prisma),
-                } as Context,
-                variableValues: variables,
+            const response = await graphql({
+                schema: gqlSchema,
+                source: req.body.query,
+                rootValue,
+                variableValues: req.body.variables,
+                contextValue: { prisma, ...dataLoaders }
             });
+            return response;
         },
     });
 };
